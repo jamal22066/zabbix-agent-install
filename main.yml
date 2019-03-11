@@ -1,0 +1,54 @@
+- name: Enable Zabbix repo on hosts
+  become: yes
+  command: "subscription-manager repos --enable=orockcloud_Zabbix_Official_Repository_Zabbix_Official_Repository"
+  ignore_errors: yes
+
+- name: 'install zabbix packages'
+  yum:
+    name: "{{ item }}"
+    state: present
+    disable_gpg_check: yes
+  with_items:
+    - zabbix-agent
+    - zabbix-get
+    - zabbix-sender
+  notify:
+    - Restart zabbix
+
+- name: 'set zabbix conf files accordingly'
+  template:
+    src: zabbix_agentd.conf.j2
+    dest: "/etc/zabbix/zabbix_agentd.conf"
+    owner: root
+    group: root
+    mode: 0644
+  notify:
+    - Restart zabbix
+
+- name: 'Ensure zabbix-agent is running and enabled'
+  service:
+    name: zabbix-agent
+    state: started
+    enabled: true
+
+- name: 'Check if Firewalld is running'
+  command: firewall-cmd --state
+  register: firewalld_check
+  changed_when: false
+  failed_when: false
+
+- name: Firewalld is running. Settingup Firewall rules
+  when: firewalld_check.rc == 0
+  block:
+    - name: 'Add firewall allow rule for zabbix listener port'
+      firewalld:
+        port: "{{ zabbix_agent_port }}/tcp"
+        permanent: yes
+        state: enabled
+
+    - name: 'Add firewall allow rule for zabbix listener port'
+      firewalld:
+        port: "{{ zabbix_agent_port }}/tcp"
+        state: enabled
+      notify:
+        - Restart zabbix
